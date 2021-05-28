@@ -1,0 +1,16 @@
+{application, token_keeper_client , [
+    {description, "Token Keeper service client"},
+    {vsn, "0.0.1"},
+    {applications, [
+        kernel,
+        stdlib,
+        genlib,
+        scoper,
+        woody,
+        token_keeper_proto
+    ]},
+    {env, []},
+    {maintainers, []},
+    {licenses, ["Apache 2.0"]},
+    {links, []}
+]}.
