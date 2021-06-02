@@ -1,7 +1,7 @@
 REBAR := $(shell which rebar3 2>/dev/null || which ./rebar3)
 
-.PHONY: all get_deps ensure_elvis compile lint check_format \
-		format test xref clean distclean dialyze plt_update shell
+.PHONY: all get_deps compile shell lint check_format \
+		format test xref clean distclean dialyze plt_update
 
 all: compile
 
