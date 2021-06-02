@@ -1,6 +1,6 @@
 # token-keeper-client
 
-A library that does something
+Token Keeper service client library
 
 ## Сборка
 
