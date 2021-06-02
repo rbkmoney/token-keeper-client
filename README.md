@@ -1,6 +1,6 @@
 # token-keeper-client
 
-Token Keeper service client library
+[Token Keeper](https://github.com/rbkmoney/token-keeper) service client library 
 
 ## Сборка
 
