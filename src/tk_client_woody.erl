@@ -60,18 +60,25 @@ call_retry(Request, Context, Opts, Retry) ->
 -spec apply_retry_strategy(genlib_retry:strategy(), woody_system_error(), woody_context:ctx()) ->
     genlib_retry:strategy().
 apply_retry_strategy(Retry, Error, Context) ->
-    apply_retry_step(genlib_retry:next_step(Retry), woody_context:get_deadline(Context), Error).
+    apply_retry_step(genlib_retry:next_step(Retry), get_deadline_ms(Context), Error).
 
--spec apply_retry_step(next_step(), woody_deadline:deadline(), woody_system_error()) -> genlib_retry:strategy().
+-spec get_deadline_ms(woody_context:ctx()) -> undefined | non_neg_integer().
+get_deadline_ms(Context) ->
+    case woody_context:get_deadline(Context) of
+        undefined ->
+            undefined;
+        Deadline ->
+            woody_deadline:to_unixtime_ms(Deadline)
+    end.
+
+-spec apply_retry_step(next_step(), undefined | non_neg_integer(), woody_system_error()) -> genlib_retry:strategy().
 apply_retry_step(finish, _, Error) ->
     erlang:error(Error);
 apply_retry_step({wait, Timeout, Retry}, undefined, _) ->
     ok = timer:sleep(Timeout),
     Retry;
-apply_retry_step({wait, Timeout, Retry}, Deadline0, Error) ->
-    Deadline1 = woody_deadline:from_unixtime_ms(
-        woody_deadline:to_unixtime_ms(Deadline0) - Timeout
-    ),
+apply_retry_step({wait, Timeout, Retry}, DeadlineMs, Error) when DeadlineMs > Timeout ->
+    Deadline1 = woody_deadline:from_unixtime_ms(DeadlineMs - Timeout),
     case woody_deadline:is_reached(Deadline1) of
         true ->
             % no more time for retries
