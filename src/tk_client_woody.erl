@@ -10,7 +10,6 @@
 %%
 
 -type service_name() :: token_keeper.
-
 -type client_config() :: #{
     url := woody:url(),
     timeout => non_neg_integer(),
@@ -42,6 +41,8 @@ call(ServiceName, Function, Args, Context0, EventHandler) ->
     },
     call_retry(Request, Context1, Opts, Retry).
 
+-spec call_retry(woody:request(), woody_context:ctx(), woody_client:options(), genlib_retry:strategy()) ->
+    woody:result().
 call_retry(Request, Context, Opts, Retry) ->
     try
         woody_client:call(Request, Opts, Context)
@@ -53,9 +54,15 @@ call_retry(Request, Context, Opts, Retry) ->
             call_retry(Request, Context, Opts, NextRetry)
     end.
 
+-type next_step() :: {wait, Timeout :: pos_integer(), genlib_retry:strategy()} | finish.
+-type woody_system_error() :: {woody_error, woody_error:system_error()}.
+
+-spec apply_retry_strategy(genlib_retry:strategy(), woody_system_error(), woody_context:ctx()) ->
+    genlib_retry:strategy().
 apply_retry_strategy(Retry, Error, Context) ->
     apply_retry_step(genlib_retry:next_step(Retry), woody_context:get_deadline(Context), Error).
 
+-spec apply_retry_step(next_step(), woody_deadline:deadline(), woody_system_error()) -> genlib_retry:strategy().
 apply_retry_step(finish, _, Error) ->
     erlang:error(Error);
 apply_retry_step({wait, Timeout, Retry}, undefined, _) ->
@@ -79,6 +86,7 @@ get_service_client_config(ServiceName) ->
     ServiceClients = genlib_app:env(?APP, service_clients, #{}),
     maps:get(ServiceName, ServiceClients, #{}).
 
+-spec get_service_client_url(client_config()) -> woody:url().
 get_service_client_url(ClientConfig) ->
     maps:get(url, ClientConfig).
 
@@ -93,11 +101,13 @@ get_service_deadline(ClientConfig) ->
         Timeout -> woody_deadline:from_timeout(Timeout)
     end.
 
+-spec get_service_retry(woody:func(), client_config()) -> genlib_retry:strategy().
 get_service_retry(Function, ClientConfig) ->
     FunctionRetries = maps:get(retries, ClientConfig, #{}),
     DefaultRetry = maps:get('_', FunctionRetries, finish),
     maps:get(Function, FunctionRetries, DefaultRetry).
 
+-spec ensure_deadline_set(woody_deadline:deadline(), woody_context:ctx()) -> woody_context:ctx().
 ensure_deadline_set(undefined, Context) ->
     case woody_context:get_deadline(Context) of
         undefined ->
@@ -108,8 +118,10 @@ ensure_deadline_set(undefined, Context) ->
 ensure_deadline_set(Deadline, Context) ->
     set_deadline(Deadline, Context).
 
+-spec set_default_deadline(woody_context:ctx()) -> woody_context:ctx().
 set_default_deadline(Context) ->
     set_deadline(woody_deadline:from_timeout(?DEFAULT_DEADLINE), Context).
 
+-spec set_deadline(woody_deadline:deadline(), woody_context:ctx()) -> woody_context:ctx().
 set_deadline(Deadline, Context) ->
     woody_context:set_deadline(Deadline, Context).
