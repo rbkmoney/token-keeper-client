@@ -32,7 +32,7 @@ call(ServiceName, Function, Args, Context) ->
 call(ServiceName, Function, Args, Context0, EventHandler) ->
     Config = get_service_client_config(ServiceName),
     Deadline = get_service_deadline(Config),
-    Context1 = set_deadline(Deadline, set_default_deadline(Context0)),
+    Context1 = ensure_deadline_set(Deadline, Context0),
     Retry = get_service_retry(Function, Config),
     Service = get_service_modname(ServiceName),
     Request = {Service, Function, Args},
@@ -93,20 +93,23 @@ get_service_deadline(ClientConfig) ->
         Timeout -> woody_deadline:from_timeout(Timeout)
     end.
 
-set_deadline(undefined, Context) ->
-    Context;
-set_deadline(Deadline, Context) ->
-    woody_context:set_deadline(Deadline, Context).
-
-set_default_deadline(Context) ->
-    case woody_context:get_deadline(Context) of
-        undefined ->
-            woody_context:set_deadline(woody_deadline:from_timeout(?DEFAULT_DEADLINE), Context);
-        _AlreadySet ->
-            Context
-    end.
-
 get_service_retry(Function, ClientConfig) ->
     FunctionRetries = maps:get(retries, ClientConfig, #{}),
     DefaultRetry = maps:get('_', FunctionRetries, finish),
     maps:get(Function, FunctionRetries, DefaultRetry).
+
+ensure_deadline_set(undefined, Context) ->
+    case woody_context:get_deadline(Context) of
+        undefined ->
+            set_default_deadline(Context);
+        _AlreadySet ->
+            Context
+    end;
+ensure_deadline_set(Deadline, Context) ->
+    set_deadline(Deadline, Context).
+
+set_default_deadline(Context) ->
+    set_deadline(woody_deadline:from_timeout(?DEFAULT_DEADLINE), Context).
+
+set_deadline(Deadline, Context) ->
+    woody_context:set_deadline(Deadline, Context).

@@ -21,14 +21,14 @@
 
 -type auth_data() :: tk_token_keeper_thrift:'AuthData'().
 
--type id() :: binary().
--type token() :: binary().
--type status() :: atom().
+-type id() :: tk_token_keeper_thrift:'AuthDataID'().
+-type token() :: tk_token_keeper_thrift:'Token'().
+-type status() :: tk_token_keeper_thrift:'AuthDataStatus'().
 -type encoded_fragment() :: {encoded_fragment, tk_token_keeper_thrift:'ContextFragment'()}.
 -type metadata() :: #{metadata_ns() => metadata_content()}.
+-type metadata_ns() :: tk_token_keeper_thrift:'MetadataNamespace'().
 -type metadata_content() :: #{binary() => binary()}.
--type metadata_ns() :: binary().
--type authority() :: binary().
+-type authority() :: tk_token_keeper_thrift:'Authority'().
 
 -export_type([auth_data/0]).
 -export_type([id/0]).
@@ -36,8 +36,8 @@
 -export_type([status/0]).
 -export_type([encoded_fragment/0]).
 -export_type([metadata/0]).
--export_type([metadata_content/0]).
 -export_type([metadata_ns/0]).
+-export_type([metadata_content/0]).
 -export_type([authority/0]).
 
 %%

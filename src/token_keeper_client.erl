@@ -9,7 +9,7 @@
 
 %% API types
 
--type token() :: binary().
+-type token() :: tk_auth_data:token().
 -type source_context() :: #{request_origin := binary()}.
 
 -export_type([token/0]).
