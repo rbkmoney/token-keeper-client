@@ -48,7 +48,7 @@ format:
 	$(REBAR) fmt -w
 
 dialyze:
-	$(REBAR) as test dialyzer
+	$(REBAR) dialyzer
 
 clean:
 	$(REBAR) cover -r
