@@ -15,6 +15,25 @@
 -export_type([token/0]).
 -export_type([source_context/0]).
 
+%% API Errors
+
+-type token_error(T) :: {token, T}.
+-type auth_data_error(T) :: {auth_data, T}.
+-type context_error(T) :: {context, T}.
+
+-type invalid_token_error() :: token_error(invalid).
+-type auth_data_not_found_error() :: auth_data_error(not_found).
+-type auth_data_revoked_error() :: auth_data_error(revoked).
+-type context_creation_error() :: context_error(creation_failed).
+
+-type get_by_token_errors() ::
+    invalid_token_error()
+    | auth_data_not_found_error()
+    | auth_data_revoked_error()
+    | context_creation_error().
+
+-export_type([get_by_token_errors/0]).
+
 %% Internal types
 
 -type source_context_thrift() :: tk_token_keeper_thrift:'TokenSourceContext'().
@@ -24,7 +43,7 @@
 %%
 
 -spec get_by_token(token(), source_context() | undefined, woody_context:ctx()) ->
-    {ok, tk_auth_data:auth_data()} | {error, _Reason}.
+    {ok, tk_auth_data:auth_data()} | {error, get_by_token_errors()}.
 get_by_token(TokenString, SourceContext, WoodyContext) ->
     call_get_by_token(TokenString, encode_source_context(SourceContext), WoodyContext).
 
@@ -41,8 +60,7 @@ encode_source_context(undefined) ->
 %%
 
 -spec call_get_by_token(token(), source_context_thrift(), woody_context:ctx()) ->
-    {ok, tk_auth_data:auth_data()}
-    | {error, {token, invalid} | {auth_data, not_found | revoked} | {context, creation_failed}}.
+    {ok, tk_auth_data:auth_data()} | {error, get_by_token_errors()}.
 call_get_by_token(Token, TokenSourceContext, WoodyContext) ->
     case tk_client_woody:call('GetByToken', {Token, TokenSourceContext}, WoodyContext) of
         {ok, AuthData} ->

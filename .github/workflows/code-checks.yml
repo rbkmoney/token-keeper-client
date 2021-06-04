@@ -9,29 +9,47 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/rbkmoney/build-erlang:eb6f9920868599f7e1a8ee9aaedb1921a027f7a0
-
     steps:
+    - name: Checkout source code
     - uses: actions/checkout@v2
-    - name: Cache build
+
+    - name: Cache rebar3
+      if: ${{ !env.ACT }}
+      id: cache-rebar3
+      uses: actions/cache@v2
+      with:
+        path: "~/.cache/rebar3"
+        key: rebar-global-cache-${{ hashFiles('Makefile') }}
+
+    - name: Cache _build
       if: ${{ !env.ACT }}
       id: cache-build
       uses: actions/cache@v2
       with:
         path: "_build/default/"
         key: ${{ runner.os }}-${{ hashFiles('rebar.lock') }}-build-default
-    - name: Fetch Deps
-      run: make get_deps
+
+    - name: Prepare submodules
+      run: make submodules
+
+    - name: Prepare rebar cache directory
+      run: mkdir -p ~/.cache
+
+    # TODO: Might want to get rid of container cycling in the future
     - name: Compile
-      run: make compile
-    - name: Run Xref
-      run: make xref
-    - name: Run Dialyzer
-      run: make dialyze
-    - name: Run erlfmt
-      run: make check_format
-    - name: Run linter
-      run: make lint
-    - name: Run tests (eunit, proper)
-      run: make test
+      run: make wc_compile
+
+    - name: Check formatting
+      run: make wc_check_format
+
+    - name: Run xref
+      run: make wc_xref
+
+    - name: Run linting
+      run: make wc_lint
+
+    - name: Run dialyzer
+      run: make wc_dialyze
+
+    - name: Run tests
+      run: make wc_test

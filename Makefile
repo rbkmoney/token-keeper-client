@@ -1,18 +1,42 @@
 REBAR := $(shell which rebar3 2>/dev/null || which ./rebar3)
+SUBMODULES = build_utils
+SUBTARGETS = $(patsubst %,%/.git,$(SUBMODULES))
 
-.PHONY: all get_deps compile shell lint check_format \
-		format test xref clean distclean dialyze plt_update
+UTILS_PATH := build_utils
+TEMPLATES_PATH := .
+
+REGISTRY ?= ghcr.io
+# Name of the service
+SERVICE_NAME := token-keeper-client
+
+BUILD_IMAGE_NAME := build-erlang
+BUILD_IMAGE_TAG := eb6f9920868599f7e1a8ee9aaedb1921a027f7a0
+
+CALL_ANYWHERE := \
+	submodules \
+	all compile xref lint dialyze test cover \
+	clean distclean \
+	check_format format
+
+CALL_W_CONTAINER := $(CALL_ANYWHERE)
+
+.PHONY: $(CALL_W_CONTAINER) all
 
 all: compile
 
-get_deps:
-	$(REBAR) get-deps
+-include $(UTILS_PATH)/make_lib/utils_container.mk
+
+$(SUBTARGETS): %/.git: %
+	git submodule update --init $<
+	touch $@
+
+submodules: $(SUBTARGETS)
 
 compile:
 	$(REBAR) compile
 
-shell: submodules
-	$(REBAR) shell
+xref:
+	$(REBAR) xref
 
 lint:
 	$(REBAR) lint
@@ -23,21 +47,20 @@ check_format:
 format:
 	$(REBAR) fmt -w
 
-test:
-	$(REBAR) ct
-
-xref:
-	$(REBAR) xref
+dialyze:
+	$(REBAR) as test dialyzer
 
 clean:
+	$(REBAR) cover -r
 	$(REBAR) clean
 
 distclean:
-	$(REBAR) clean -a
-	rm -rfv _build
+	$(REBAR) clean
+	rm -rf _build
 
-dialyze:
-	$(REBAR) dialyzer
+cover:
+	$(REBAR) cover
 
-plt_update:
-	$(REBAR) dialyzer -u true -s false
+# CALL_W_CONTAINER
+test:
+	$(REBAR) ct

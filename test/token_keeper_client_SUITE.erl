@@ -88,14 +88,12 @@ groups() ->
 init_per_suite(Config) ->
     Apps =
         genlib_app:start_application_with(token_keeper_client, [
-            {service_clients, #{
-                token_keeper => #{
-                    url => <<"http://token_keeper:8022/">>,
-                    timeout => ?TIMEOUT,
-                    retries => #{
-                        'GetByToken' => ?RETRY_STRATEGY,
-                        '_' => finish
-                    }
+            {service_client, #{
+                url => <<"http://token_keeper:8022/">>,
+                timeout => ?TIMEOUT,
+                retries => #{
+                    'GetByToken' => ?RETRY_STRATEGY,
+                    '_' => finish
                 }
             }},
             {namespace_mappings, #{
@@ -135,12 +133,10 @@ end_per_testcase(_Name, C) ->
 
 -spec get_by_token_ok(config()) -> test_return().
 get_by_token_ok(C) ->
-    mock_services(
-        [
-            {token_keeper, fun('GetByToken', {Token, _}) ->
-                {ok, ?AUTHDATA(Token)}
-            end}
-        ],
+    mock_token_keeper(
+        fun('GetByToken', {Token, _}) ->
+            {ok, ?AUTHDATA(Token)}
+        end,
         C
     ),
     WoodyContext = woody_context:new(),
@@ -154,12 +150,10 @@ get_by_token_ok(C) ->
 
 -spec get_user_metadata_ok(config()) -> test_return().
 get_user_metadata_ok(C) ->
-    mock_services(
-        [
-            {token_keeper, fun('GetByToken', {Token, _}) ->
-                {ok, ?AUTHDATA(Token)}
-            end}
-        ],
+    mock_token_keeper(
+        fun('GetByToken', {Token, _}) ->
+            {ok, ?AUTHDATA(Token)}
+        end,
         C
     ),
     WoodyContext = woody_context:new(),
@@ -185,13 +179,11 @@ follows_retries(_C) ->
 
 -spec follows_timeout(config()) -> _.
 follows_timeout(C) ->
-    mock_services(
-        [
-            {token_keeper, fun('GetByToken', {Token, _}) ->
-                ok = timer:sleep(5000),
-                {ok, ?AUTHDATA(Token)}
-            end}
-        ],
+    mock_token_keeper(
+        fun('GetByToken', {Token, _}) ->
+            ok = timer:sleep(5000),
+            {ok, ?AUTHDATA(Token)}
+        end,
         C
     ),
     WoodyContext = woody_context:new(),
@@ -217,59 +209,41 @@ stop_mocked_service_sup(SupPid) ->
 
 -define(APP, token_keeper_client).
 -define(HOST_IP, "::").
--define(HOST_PORT, 8080).
 -define(HOST_NAME, "localhost").
--define(HOST_URL, ?HOST_NAME ++ ":" ++ integer_to_list(?HOST_PORT)).
 
-mock_services(Services, SupOrConfig) ->
-    maps:map(fun set_cfg/2, mock_services_(Services, SupOrConfig)).
+mock_token_keeper(HandlerFun, SupOrConfig) ->
+    ServiceUrl = mock_token_keeper_(HandlerFun, SupOrConfig),
+    set_cfg_url(ServiceUrl).
 
-set_cfg(Service, Url) ->
-    {ok, Clients} = application:get_env(?APP, service_clients),
-    #{Service := BouncerCfg} = Clients,
+set_cfg_url(ServiceUrl) ->
+    {ok, ClientCfg} = application:get_env(?APP, service_client),
     ok = application:set_env(
         ?APP,
-        service_clients,
-        Clients#{Service => BouncerCfg#{url => Url}}
+        service_client,
+        ClientCfg#{url => ServiceUrl}
     ).
 
-mock_services_(Services, Config) when is_list(Config) ->
-    mock_services_(Services, ?config(test_sup, Config));
-mock_services_(Services, SupPid) when is_pid(SupPid) ->
-    ServerRef = {dummy, lists:map(fun get_service_name/1, Services)},
+mock_token_keeper_(HandlerFun, Config) when is_list(Config) ->
+    mock_token_keeper_(HandlerFun, ?config(test_sup, Config));
+mock_token_keeper_(HandlerFun, SupPid) when is_pid(SupPid) ->
     {ok, IP} = inet:parse_address(?HOST_IP),
+    ServiceName = token_keeper,
+    ServerRef = {mock, ServiceName},
     ChildSpec = woody_server:child_spec(
         ServerRef,
         Options = #{
             ip => IP,
             port => 0,
             event_handler => scoper_woody_event_handler,
-            handlers => lists:map(fun mock_service_handler/1, Services)
+            handlers => [mock_service_handler(ServiceName, HandlerFun)]
         }
     ),
     {ok, _} = supervisor:start_child(SupPid, ChildSpec),
     {IP, Port} = woody_server:get_addr(ServerRef, Options),
-    lists:foldl(
-        fun(Service, Acc) ->
-            ServiceName = get_service_name(Service),
-            Acc#{ServiceName => make_url(ServiceName, Port)}
-        end,
-        #{},
-        Services
-    ).
+    make_url(ServiceName, Port).
 
-get_service_name({ServiceName, _Fun}) ->
-    ServiceName;
-get_service_name({ServiceName, _WoodyService, _Fun}) ->
-    ServiceName.
-
-mock_service_handler({ServiceName, Fun}) ->
-    mock_service_handler(ServiceName, get_service_modname(ServiceName), Fun);
-mock_service_handler({ServiceName, WoodyService, Fun}) ->
-    mock_service_handler(ServiceName, WoodyService, Fun).
-
-mock_service_handler(ServiceName, WoodyService, Fun) ->
-    {make_path(ServiceName), {WoodyService, {token_keeper_mock, #{function => Fun}}}}.
+mock_service_handler(ServiceName, HandlerFun) ->
+    {make_path(ServiceName), {get_service_modname(ServiceName), {token_keeper_mock, #{function => HandlerFun}}}}.
 
 get_service_modname(token_keeper) ->
     {tk_token_keeper_thrift, 'TokenKeeper'}.

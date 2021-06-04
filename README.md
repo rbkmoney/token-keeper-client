@@ -1,6 +1,6 @@
 # token-keeper-client
 
-[Token Keeper](https://github.com/rbkmoney/token-keeper) service client library 
+[Token Keeper](https://github.com/rbkmoney/token-keeper) service client library
 
 ## Сборка
 
@@ -8,9 +8,9 @@
 
     make
 
-Чтобы запустить проект в режиме разработки и получить стандартный [Erlang shell][2], нужно всего лишь:
+Чтобы получить shell в контейнере сборки необходимо:
 
-    make shell
+    make wc_shell
 
 ## CI/CD
 Данная библиотека проходит автоматическую проверку с помощью Github Actions, которую можно также запустить локально с помощью [act](https://github.com/nektos/act):

@@ -2,14 +2,12 @@
 
 -export([call/3]).
 -export([call/4]).
--export([call/5]).
 
 -define(APP, token_keeper_client).
 -define(DEFAULT_DEADLINE, 5000).
 
 %%
 
--type service_name() :: token_keeper.
 -type client_config() :: #{
     url := woody:url(),
     timeout => non_neg_integer(),
@@ -20,21 +18,16 @@
 
 -spec call(woody:func(), woody:args(), context()) -> woody:result().
 call(Function, Args, Context) ->
-    call(token_keeper, Function, Args, Context).
-
--spec call(service_name(), woody:func(), woody:args(), context()) -> woody:result().
-call(ServiceName, Function, Args, Context) ->
     EventHandler = scoper_woody_event_handler,
-    call(ServiceName, Function, Args, Context, EventHandler).
+    call(Function, Args, Context, EventHandler).
 
--spec call(service_name(), woody:func(), woody:args(), context(), woody:ev_handler()) -> woody:result().
-call(ServiceName, Function, Args, Context0, EventHandler) ->
-    Config = get_service_client_config(ServiceName),
+-spec call(woody:func(), woody:args(), context(), woody:ev_handler()) -> woody:result().
+call(Function, Args, Context0, EventHandler) ->
+    Config = get_service_client_config(),
     Deadline = get_service_deadline(Config),
     Context1 = ensure_deadline_set(Deadline, Context0),
     Retry = get_service_retry(Function, Config),
-    Service = get_service_modname(ServiceName),
-    Request = {Service, Function, Args},
+    Request = {{tk_token_keeper_thrift, 'TokenKeeper'}, Function, Args},
     Opts = #{
         url => get_service_client_url(Config),
         event_handler => EventHandler
@@ -88,18 +81,13 @@ apply_retry_step({wait, Timeout, Retry}, DeadlineMs, Error) when DeadlineMs > Ti
             Retry
     end.
 
--spec get_service_client_config(service_name()) -> client_config().
-get_service_client_config(ServiceName) ->
-    ServiceClients = genlib_app:env(?APP, service_clients, #{}),
-    maps:get(ServiceName, ServiceClients, #{}).
+-spec get_service_client_config() -> client_config().
+get_service_client_config() ->
+    genlib_app:env(?APP, service_client, #{}).
 
 -spec get_service_client_url(client_config()) -> woody:url().
 get_service_client_url(ClientConfig) ->
     maps:get(url, ClientConfig).
-
--spec get_service_modname(service_name()) -> woody:service().
-get_service_modname(token_keeper) ->
-    {tk_token_keeper_thrift, 'TokenKeeper'}.
 
 -spec get_service_deadline(client_config()) -> undefined | woody_deadline:deadline().
 get_service_deadline(ClientConfig) ->
