@@ -23,6 +23,7 @@
 
 -export([
     get_by_token_ok/1,
+    create_ephemeral_ok/1,
     get_user_metadata_ok/1,
     follows_retries/1,
     follows_timeout/1
@@ -43,20 +44,25 @@
 -define(USER_SESSION_NS, <<"test.rbkmoney.usersession">>).
 -define(API_KEY_NS, <<"test.rbkmoney.apikey">>).
 
--define(AUTHDATA(Token), #token_keeper_AuthData{
+-define(CTX_FRAGMENT, #bctx_ContextFragment{type = v1_thrift_binary}).
+-define(METADATA, #{
+    ?USER_SESSION_NS => #{
+        <<"user_id">> => ?USER_ID,
+        <<"user_email">> => ?USER_EMAIL
+    },
+    ?API_KEY_NS => #{
+        <<"party_id">> => ?PARTY_ID
+    }
+}).
+-define(AUTHORITY, <<"kinginthecastle">>).
+
+-define(AUTHDATA(Token), ?AUTHDATA(Token, ?CTX_FRAGMENT, ?METADATA)).
+-define(AUTHDATA(Token, ContextFragment, Metadata), #token_keeper_AuthData{
     token = Token,
     status = active,
-    context = #bctx_ContextFragment{type = v1_thrift_binary},
-    metadata = #{
-        ?USER_SESSION_NS => #{
-            <<"user_id">> => ?USER_ID,
-            <<"user_email">> => ?USER_EMAIL
-        },
-        ?API_KEY_NS => #{
-            <<"party_id">> => ?PARTY_ID
-        }
-    },
-    authority = <<"kinginthecastle">>
+    context = ContextFragment,
+    metadata = Metadata,
+    authority = ?AUTHORITY
 }).
 
 %%
@@ -73,7 +79,8 @@ all() ->
 groups() ->
     [
         {service_client_tests, [
-            get_by_token_ok
+            get_by_token_ok,
+            create_ephemeral_ok
         ]},
         {auth_data_util_tests, [
             get_user_metadata_ok
@@ -93,6 +100,7 @@ init_per_suite(Config) ->
                 timeout => ?TIMEOUT,
                 retries => #{
                     'GetByToken' => ?RETRY_STRATEGY,
+                    'CreateEphemeral' => ?RETRY_STRATEGY,
                     '_' => finish
                 }
             }},
@@ -131,6 +139,21 @@ end_per_testcase(_Name, C) ->
 
 %%
 
+-spec create_ephemeral_ok(config()) -> test_return().
+create_ephemeral_ok(C) ->
+    mock_token_keeper(
+        fun('CreateEphemeral', {ContextFragment, Metadata}) ->
+            {ok, ?AUTHDATA(?TOKEN_STRING, ContextFragment, Metadata)}
+        end,
+        C
+    ),
+    WoodyContext = woody_context:new(),
+    ?assertEqual(
+        ?AUTHDATA(?TOKEN_STRING, ?CTX_FRAGMENT, ?METADATA),
+        token_keeper_client:create_ephemeral(?CTX_FRAGMENT, ?METADATA, WoodyContext)
+    ),
+    ok.
+
 -spec get_by_token_ok(config()) -> test_return().
 get_by_token_ok(C) ->
     mock_token_keeper(
@@ -158,9 +181,9 @@ get_user_metadata_ok(C) ->
     ),
     WoodyContext = woody_context:new(),
     {ok, AuthData} = token_keeper_client:get_by_token(?TOKEN_STRING, undefined, WoodyContext),
-    ?assertEqual(?USER_ID, tk_auth_data:get_user_id(AuthData)),
-    ?assertEqual(?USER_EMAIL, tk_auth_data:get_user_email(AuthData)),
-    ?assertEqual(?PARTY_ID, tk_auth_data:get_party_id(AuthData)),
+    ?assertEqual(?USER_ID, token_keeper_auth_data:get_user_id(AuthData)),
+    ?assertEqual(?USER_EMAIL, token_keeper_auth_data:get_user_email(AuthData)),
+    ?assertEqual(?PARTY_ID, token_keeper_auth_data:get_party_id(AuthData)),
     ok.
 
 %%

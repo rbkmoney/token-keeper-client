@@ -1,4 +1,4 @@
--module(tk_client_woody).
+-module(token_keeper_client_woody).
 
 -export([call/3]).
 -export([call/4]).

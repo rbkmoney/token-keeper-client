@@ -1,4 +1,4 @@
--module(tk_auth_data).
+-module(token_keeper_auth_data).
 
 -include_lib("token_keeper_proto/include/tk_token_keeper_thrift.hrl").
 -include_lib("token_keeper_proto/include/tk_context_thrift.hrl").

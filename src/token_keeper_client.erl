@@ -5,11 +5,12 @@
 
 %% API functions
 
+-export([create_ephemeral/3]).
 -export([get_by_token/3]).
 
 %% API types
 
--type token() :: tk_auth_data:token().
+-type token() :: token_keeper_auth_data:token().
 -type source_context() :: #{request_origin := binary()}.
 
 -export_type([token/0]).
@@ -36,14 +37,22 @@
 
 %% Internal types
 
+-type context_fragment() :: tk_token_keeper_thrift:'ContextFragment'().
+-type metadata() :: token_keeper_auth_data:metadata().
+
 -type source_context_thrift() :: tk_token_keeper_thrift:'TokenSourceContext'().
 
 %%
 %% API functions
 %%
 
+-spec create_ephemeral(context_fragment(), metadata(), woody_context:ctx()) ->
+    token_keeper_auth_data:auth_data().
+create_ephemeral(ContextFragment, Metadata, WoodyContext) ->
+    call_create_ephemeral(ContextFragment, Metadata, WoodyContext).
+
 -spec get_by_token(token(), source_context() | undefined, woody_context:ctx()) ->
-    {ok, tk_auth_data:auth_data()} | {error, get_by_token_errors()}.
+    {ok, token_keeper_auth_data:auth_data()} | {error, get_by_token_errors()}.
 get_by_token(TokenString, SourceContext, WoodyContext) ->
     call_get_by_token(TokenString, encode_source_context(SourceContext), WoodyContext).
 
@@ -59,10 +68,16 @@ encode_source_context(undefined) ->
 
 %%
 
+-spec call_create_ephemeral(context_fragment(), metadata(), woody_context:ctx()) ->
+    token_keeper_auth_data:auth_data().
+call_create_ephemeral(ContextFragment, Metadata, WoodyContext) ->
+    {ok, AuthData} = token_keeper_client_woody:call('CreateEphemeral', {ContextFragment, Metadata}, WoodyContext),
+    AuthData.
+
 -spec call_get_by_token(token(), source_context_thrift(), woody_context:ctx()) ->
-    {ok, tk_auth_data:auth_data()} | {error, get_by_token_errors()}.
+    {ok, token_keeper_auth_data:auth_data()} | {error, get_by_token_errors()}.
 call_get_by_token(Token, TokenSourceContext, WoodyContext) ->
-    case tk_client_woody:call('GetByToken', {Token, TokenSourceContext}, WoodyContext) of
+    case token_keeper_client_woody:call('GetByToken', {Token, TokenSourceContext}, WoodyContext) of
         {ok, AuthData} ->
             {ok, AuthData};
         {exception, #token_keeper_InvalidToken{}} ->
