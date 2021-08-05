@@ -103,10 +103,6 @@ init_per_suite(Config) ->
                     'CreateEphemeral' => ?RETRY_STRATEGY,
                     '_' => finish
                 }
-            }},
-            {namespace_mappings, #{
-                user_session => ?USER_SESSION_NS,
-                api_key => ?API_KEY_NS
             }}
         ]),
     [{apps, Apps}] ++ Config.
@@ -181,9 +177,9 @@ get_user_metadata_ok(C) ->
     ),
     WoodyContext = woody_context:new(),
     {ok, AuthData} = token_keeper_client:get_by_token(?TOKEN_STRING, undefined, WoodyContext),
-    ?assertEqual(?USER_ID, token_keeper_auth_data:get_user_id(AuthData)),
-    ?assertEqual(?USER_EMAIL, token_keeper_auth_data:get_user_email(AuthData)),
-    ?assertEqual(?PARTY_ID, token_keeper_auth_data:get_party_id(AuthData)),
+    ?assertEqual(?USER_ID, token_keeper_auth_data:get_metadata(?USER_SESSION_NS, <<"user_id">>, AuthData)),
+    ?assertEqual(?USER_EMAIL, token_keeper_auth_data:get_metadata(?USER_SESSION_NS, <<"user_email">>, AuthData)),
+    ?assertEqual(?PARTY_ID, token_keeper_auth_data:get_metadata(?API_KEY_NS, <<"party_id">>, AuthData)),
     ok.
 
 %%
