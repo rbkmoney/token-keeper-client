@@ -78,5 +78,7 @@ get_metadata(MetadataNS, #token_keeper_AuthData{metadata = Metadata}) ->
 
 -spec get_metadata(metadata_ns(), binary(), auth_data()) -> binary() | undefined.
 get_metadata(MetadataNS, FieldName, #token_keeper_AuthData{metadata = Metadata}) ->
-    NamespacedMetadata = maps:get(MetadataNS, Metadata, #{}),
-    maps:get(FieldName, NamespacedMetadata, undefined).
+    case maps:get(MetadataNS, Metadata, undefined) of
+        #{FieldName := Value} -> Value;
+        _ -> undefined
+    end.
