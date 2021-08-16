@@ -13,7 +13,6 @@
 
 -export([get_metadata/1]).
 -export([get_metadata/2]).
--export([get_metadata/3]).
 
 %% API types
 
@@ -23,9 +22,7 @@
 -type token() :: tk_token_keeper_thrift:'Token'().
 -type status() :: tk_token_keeper_thrift:'AuthDataStatus'().
 -type context_fragment() :: tk_token_keeper_thrift:'ContextFragment'().
--type metadata() :: #{metadata_ns() => metadata_content()}.
--type metadata_ns() :: tk_token_keeper_thrift:'MetadataNamespace'().
--type metadata_content() :: #{binary() => binary()}.
+-type metadata() :: tk_token_keeper_thrift:'Metadata'().
 -type authority() :: tk_token_keeper_thrift:'Authority'().
 
 -export_type([auth_data/0]).
@@ -34,8 +31,6 @@
 -export_type([status/0]).
 -export_type([context_fragment/0]).
 -export_type([metadata/0]).
--export_type([metadata_ns/0]).
--export_type([metadata_content/0]).
 -export_type([authority/0]).
 
 %%
@@ -72,13 +67,6 @@ get_authority(#token_keeper_AuthData{authority = Authority}) ->
 get_metadata(#token_keeper_AuthData{metadata = Metadata}) ->
     Metadata.
 
--spec get_metadata(metadata_ns(), auth_data()) -> metadata_content() | undefined.
-get_metadata(MetadataNS, #token_keeper_AuthData{metadata = Metadata}) ->
-    maps:get(MetadataNS, Metadata, undefined).
-
--spec get_metadata(metadata_ns(), binary(), auth_data()) -> binary() | undefined.
-get_metadata(MetadataNS, FieldName, #token_keeper_AuthData{metadata = Metadata}) ->
-    case maps:get(MetadataNS, Metadata, undefined) of
-        #{FieldName := Value} -> Value;
-        _ -> undefined
-    end.
+-spec get_metadata(binary(), auth_data()) -> binary() | undefined.
+get_metadata(FieldName, #token_keeper_AuthData{metadata = Metadata}) ->
+    maps:get(FieldName, Metadata, undefined).

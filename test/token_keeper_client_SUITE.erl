@@ -41,18 +41,11 @@
 -define(USER_EMAIL, <<"TEST_EMAIL">>).
 -define(PARTY_ID, <<"TEST_PARTY">>).
 
--define(USER_SESSION_NS, <<"test.rbkmoney.usersession">>).
--define(API_KEY_NS, <<"test.rbkmoney.apikey">>).
-
 -define(CTX_FRAGMENT, #bctx_ContextFragment{type = v1_thrift_binary}).
 -define(METADATA, #{
-    ?USER_SESSION_NS => #{
-        <<"user_id">> => ?USER_ID,
-        <<"user_email">> => ?USER_EMAIL
-    },
-    ?API_KEY_NS => #{
-        <<"party_id">> => ?PARTY_ID
-    }
+    <<"user_id">> => ?USER_ID,
+    <<"user_email">> => ?USER_EMAIL,
+    <<"party_id">> => ?PARTY_ID
 }).
 -define(AUTHORITY, <<"kinginthecastle">>).
 
@@ -177,9 +170,9 @@ get_user_metadata_ok(C) ->
     ),
     WoodyContext = woody_context:new(),
     {ok, AuthData} = token_keeper_client:get_by_token(?TOKEN_STRING, undefined, WoodyContext),
-    ?assertEqual(?USER_ID, token_keeper_auth_data:get_metadata(?USER_SESSION_NS, <<"user_id">>, AuthData)),
-    ?assertEqual(?USER_EMAIL, token_keeper_auth_data:get_metadata(?USER_SESSION_NS, <<"user_email">>, AuthData)),
-    ?assertEqual(?PARTY_ID, token_keeper_auth_data:get_metadata(?API_KEY_NS, <<"party_id">>, AuthData)),
+    ?assertEqual(?USER_ID, token_keeper_auth_data:get_metadata(<<"user_id">>, AuthData)),
+    ?assertEqual(?USER_EMAIL, token_keeper_auth_data:get_metadata(<<"user_email">>, AuthData)),
+    ?assertEqual(?PARTY_ID, token_keeper_auth_data:get_metadata(<<"party_id">>, AuthData)),
     ok.
 
 %%
