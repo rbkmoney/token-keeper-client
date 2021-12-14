@@ -1,4 +1,4 @@
-{application, token_keeper_client , [
+{application, token_keeper_client, [
     {description, "Token Keeper service client library"},
     {vsn, "0.0.1"},
     {applications, [

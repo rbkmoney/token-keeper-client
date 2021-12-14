@@ -22,9 +22,12 @@
 %%
 
 -export([
-    get_by_token_ok/1,
+    authenticate_ok/1,
     create_ephemeral_ok/1,
-    get_user_metadata_ok/1,
+    create_ok/1,
+    get_ok/1,
+    revoke_ok/1,
+    not_configured_authority/1,
     follows_retries/1,
     follows_timeout/1
 ]).
@@ -49,8 +52,9 @@
 }).
 -define(AUTHORITY, <<"kinginthecastle">>).
 
--define(AUTHDATA(Token), ?AUTHDATA(Token, ?CTX_FRAGMENT, ?METADATA)).
--define(AUTHDATA(Token, ContextFragment, Metadata), #token_keeper_AuthData{
+-define(AUTHDATA(Token), ?AUTHDATA(undefined, Token, ?CTX_FRAGMENT, ?METADATA)).
+-define(AUTHDATA(ID, Token, ContextFragment, Metadata), #token_keeper_AuthData{
+    id = ID,
     token = Token,
     status = active,
     context = ContextFragment,
@@ -64,7 +68,6 @@
 all() ->
     [
         {group, service_client_tests},
-        {group, auth_data_util_tests},
         {group, woody_client_tests}
     ].
 
@@ -72,11 +75,12 @@ all() ->
 groups() ->
     [
         {service_client_tests, [
-            get_by_token_ok,
-            create_ephemeral_ok
-        ]},
-        {auth_data_util_tests, [
-            get_user_metadata_ok
+            authenticate_ok,
+            create_ephemeral_ok,
+            create_ok,
+            get_ok,
+            revoke_ok,
+            not_configured_authority
         ]},
         {woody_client_tests, [
             follows_retries,
@@ -88,13 +92,38 @@ groups() ->
 init_per_suite(Config) ->
     Apps =
         genlib_app:start_application_with(token_keeper_client, [
-            {service_client, #{
-                url => <<"http://token_keeper:8022/">>,
-                timeout => ?TIMEOUT,
-                retries => #{
-                    'GetByToken' => ?RETRY_STRATEGY,
-                    'CreateEphemeral' => ?RETRY_STRATEGY,
-                    '_' => finish
+            {service_clients, #{
+                authenticator => #{
+                    url => <<"http://token_keeper:8022/v2/authenticator">>,
+                    timeout => ?TIMEOUT,
+                    retries => #{
+                        'Authenticate' => ?RETRY_STRATEGY,
+                        '_' => finish
+                    }
+                },
+                authorities => #{
+                    ephemeral => #{
+                        ephemeral_authority => #{
+                            url => <<"http://token_keeper:8022/v2/authority/ephemeral_authority">>,
+                            timeout => ?TIMEOUT,
+                            retries => #{
+                                'Create' => ?RETRY_STRATEGY,
+                                '_' => finish
+                            }
+                        }
+                    },
+                    offline => #{
+                        offline_authority => #{
+                            url => <<"http://token_keeper:8022/v2/authority/offline_authority">>,
+                            timeout => ?TIMEOUT,
+                            retries => #{
+                                'Create' => ?RETRY_STRATEGY,
+                                'Get' => ?RETRY_STRATEGY,
+                                'Revoke' => ?RETRY_STRATEGY,
+                                '_' => finish
+                            }
+                        }
+                    }
                 }
             }}
         ]),
@@ -128,51 +157,117 @@ end_per_testcase(_Name, C) ->
 
 %%
 
+-spec authenticate_ok(config()) -> test_return().
+authenticate_ok(C) ->
+    mock_token_keeper(
+        [
+            {authenticator, fun('Authenticate', {Token, _}) ->
+                {ok, ?AUTHDATA(Token)}
+            end}
+        ],
+        C
+    ),
+    WoodyContext = woody_context:new(),
+    Client = token_keeper_client:authenticator(WoodyContext),
+    ?assertEqual(
+        {ok, token_keeper_client_codec:decode_authdata(?AUTHDATA(?TOKEN_STRING))},
+        token_keeper_authenticator:authenticate(?TOKEN_STRING, #{}, Client)
+    ),
+    ok.
+
 -spec create_ephemeral_ok(config()) -> test_return().
 create_ephemeral_ok(C) ->
     mock_token_keeper(
-        fun('CreateEphemeral', {ContextFragment, Metadata}) ->
-            {ok, ?AUTHDATA(?TOKEN_STRING, ContextFragment, Metadata)}
-        end,
+        [
+            {{authority, {ephemeral, ephemeral_authority}}, fun('Create', {ContextFragment, Metadata}) ->
+                {ok, ?AUTHDATA(undefined, ?TOKEN_STRING, ContextFragment, Metadata)}
+            end}
+        ],
         C
     ),
     WoodyContext = woody_context:new(),
+    Client = token_keeper_client:ephemeral_authority(ephemeral_authority, WoodyContext),
     ?assertEqual(
-        ?AUTHDATA(?TOKEN_STRING, ?CTX_FRAGMENT, ?METADATA),
-        token_keeper_client:create_ephemeral(?CTX_FRAGMENT, ?METADATA, WoodyContext)
+        {ok,
+            token_keeper_client_codec:decode_authdata(
+                ?AUTHDATA(undefined, ?TOKEN_STRING, ?CTX_FRAGMENT, ?METADATA)
+            )},
+        token_keeper_authority_ephemeral:create(?CTX_FRAGMENT, ?METADATA, Client)
     ),
     ok.
 
--spec get_by_token_ok(config()) -> test_return().
-get_by_token_ok(C) ->
+-spec create_ok(config()) -> test_return().
+create_ok(C) ->
+    AuthdataID = <<"TEST">>,
     mock_token_keeper(
-        fun('GetByToken', {Token, _}) ->
-            {ok, ?AUTHDATA(Token)}
-        end,
+        [
+            {{authority, {offline, offline_authority}}, fun('Create', {ID, ContextFragment, Metadata}) ->
+                {ok, ?AUTHDATA(ID, ?TOKEN_STRING, ContextFragment, Metadata)}
+            end}
+        ],
         C
     ),
     WoodyContext = woody_context:new(),
+    Client = token_keeper_client:offline_authority(offline_authority, WoodyContext),
     ?assertEqual(
-        {ok, ?AUTHDATA(?TOKEN_STRING)},
-        token_keeper_client:get_by_token(?TOKEN_STRING, undefined, WoodyContext)
+        {ok,
+            token_keeper_client_codec:decode_authdata(
+                ?AUTHDATA(AuthdataID, ?TOKEN_STRING, ?CTX_FRAGMENT, ?METADATA)
+            )},
+        token_keeper_authority_offline:create(AuthdataID, ?CTX_FRAGMENT, ?METADATA, Client)
     ),
     ok.
 
-%%
-
--spec get_user_metadata_ok(config()) -> test_return().
-get_user_metadata_ok(C) ->
+-spec get_ok(config()) -> test_return().
+get_ok(C) ->
+    AuthdataID = <<"TEST">>,
     mock_token_keeper(
-        fun('GetByToken', {Token, _}) ->
-            {ok, ?AUTHDATA(Token)}
-        end,
+        [
+            {{authority, {offline, offline_authority}}, fun('Get', {ID}) ->
+                {ok, ?AUTHDATA(ID, ?TOKEN_STRING, ?CTX_FRAGMENT, ?METADATA)}
+            end}
+        ],
         C
     ),
     WoodyContext = woody_context:new(),
-    {ok, AuthData} = token_keeper_client:get_by_token(?TOKEN_STRING, undefined, WoodyContext),
-    ?assertEqual(?USER_ID, token_keeper_auth_data:get_metadata(<<"user_id">>, AuthData)),
-    ?assertEqual(?USER_EMAIL, token_keeper_auth_data:get_metadata(<<"user_email">>, AuthData)),
-    ?assertEqual(?PARTY_ID, token_keeper_auth_data:get_metadata(<<"party_id">>, AuthData)),
+    Client = token_keeper_client:offline_authority(offline_authority, WoodyContext),
+    ?assertEqual(
+        {ok,
+            token_keeper_client_codec:decode_authdata(
+                ?AUTHDATA(AuthdataID, ?TOKEN_STRING, ?CTX_FRAGMENT, ?METADATA)
+            )},
+        token_keeper_authority_offline:get(AuthdataID, Client)
+    ),
+    ok.
+
+-spec revoke_ok(config()) -> test_return().
+revoke_ok(C) ->
+    AuthdataID = <<"TEST">>,
+    mock_token_keeper(
+        [
+            {{authority, {offline, offline_authority}}, fun('Revoke', {_ID}) ->
+                {ok, ok}
+            end}
+        ],
+        C
+    ),
+    WoodyContext = woody_context:new(),
+    Client = token_keeper_client:offline_authority(offline_authority, WoodyContext),
+    ?assertEqual(
+        {ok, ok},
+        token_keeper_authority_offline:revoke(AuthdataID, Client)
+    ),
+    ok.
+
+-spec not_configured_authority(config()) -> test_return().
+not_configured_authority(_C) ->
+    WoodyContext = woody_context:new(),
+    try
+        token_keeper_client:offline_authority(some_other_authority, WoodyContext)
+    catch
+        error:Error ->
+            ?assertEqual(Error, {misconfiguration, {not_configured, {offline, some_other_authority}}})
+    end,
     ok.
 
 %%
@@ -180,10 +275,11 @@ get_user_metadata_ok(C) ->
 -spec follows_retries(config()) -> _.
 follows_retries(_C) ->
     WoodyContext = woody_context:new(),
+    Client = token_keeper_client:authenticator(WoodyContext),
     T0 = erlang:monotonic_time(millisecond),
     ?assertError(
         {woody_error, {internal, resource_unavailable, _}},
-        token_keeper_client:get_by_token(?TOKEN_STRING, undefined, WoodyContext)
+        token_keeper_authenticator:authenticate(?TOKEN_STRING, #{}, Client)
     ),
     T1 = erlang:monotonic_time(millisecond),
     ?assert(T1 - T0 > ?RETRY_NUM * ?RETRY_TIMEOUT),
@@ -192,17 +288,20 @@ follows_retries(_C) ->
 -spec follows_timeout(config()) -> _.
 follows_timeout(C) ->
     mock_token_keeper(
-        fun('GetByToken', {Token, _}) ->
-            ok = timer:sleep(5000),
-            {ok, ?AUTHDATA(Token)}
-        end,
+        [
+            {authenticator, fun('Authenticate', {Token, _}) ->
+                ok = timer:sleep(5000),
+                {ok, ?AUTHDATA(Token)}
+            end}
+        ],
         C
     ),
     WoodyContext = woody_context:new(),
+    Client = token_keeper_client:authenticator(WoodyContext),
     T0 = erlang:monotonic_time(millisecond),
     ?assertError(
         {woody_error, {external, result_unknown, _}},
-        token_keeper_client:get_by_token(?TOKEN_STRING, undefined, WoodyContext)
+        token_keeper_authenticator:authenticate(?TOKEN_STRING, #{}, Client)
     ),
     T1 = erlang:monotonic_time(millisecond),
     ?assert(T1 - T0 > ?TIMEOUT),
@@ -223,21 +322,9 @@ stop_mocked_service_sup(SupPid) ->
 -define(HOST_IP, "::").
 -define(HOST_NAME, "localhost").
 
-mock_token_keeper(HandlerFun, SupOrConfig) ->
-    ServiceUrl = mock_token_keeper_(HandlerFun, SupOrConfig),
-    set_cfg_url(ServiceUrl).
-
-set_cfg_url(ServiceUrl) ->
-    {ok, ClientCfg} = application:get_env(?APP, service_client),
-    ok = application:set_env(
-        ?APP,
-        service_client,
-        ClientCfg#{url => ServiceUrl}
-    ).
-
-mock_token_keeper_(HandlerFun, Config) when is_list(Config) ->
-    mock_token_keeper_(HandlerFun, ?config(test_sup, Config));
-mock_token_keeper_(HandlerFun, SupPid) when is_pid(SupPid) ->
+mock_token_keeper(Handlers, Config) when is_list(Config) ->
+    mock_token_keeper(Handlers, ?config(test_sup, Config));
+mock_token_keeper(Handlers, SupPid) when is_pid(SupPid) ->
     {ok, IP} = inet:parse_address(?HOST_IP),
     ServiceName = token_keeper,
     ServerRef = {mock, ServiceName},
@@ -247,21 +334,74 @@ mock_token_keeper_(HandlerFun, SupPid) when is_pid(SupPid) ->
             ip => IP,
             port => 0,
             event_handler => scoper_woody_event_handler,
-            handlers => [mock_service_handler(ServiceName, HandlerFun)]
+            handlers => mock_service_handlers(Handlers)
         }
     ),
     {ok, _} = supervisor:start_child(SupPid, ChildSpec),
     {IP, Port} = woody_server:get_addr(ServerRef, Options),
-    make_url(ServiceName, Port).
+    _ = override_env_urls(IP, Port, Handlers),
+    ok.
 
-mock_service_handler(ServiceName, HandlerFun) ->
-    {make_path(ServiceName), {get_service_modname(ServiceName), {token_keeper_mock, #{function => HandlerFun}}}}.
+mock_service_handlers(Handlers) ->
+    [mock_service_handler(Handler) || Handler <- Handlers].
 
-get_service_modname(token_keeper) ->
-    {tk_token_keeper_thrift, 'TokenKeeper'}.
+mock_service_handler({HandlerName, HandlerFun}) ->
+    {get_handler_path(HandlerName), {get_service_modname(HandlerName), {token_keeper_mock, #{function => HandlerFun}}}}.
 
-make_url(ServiceName, Port) ->
-    iolist_to_binary(["http://", ?HOST_NAME, ":", integer_to_list(Port), make_path(ServiceName)]).
+get_handler_url(HandlerName) ->
+    ClientServiceCfg = get_client_service_config(HandlerName),
+    maps:get(url, ClientServiceCfg).
 
-make_path(ServiceName) ->
-    "/" ++ atom_to_list(ServiceName).
+get_handler_path(HandlerName) ->
+    get_url_path(get_handler_url(HandlerName)).
+
+get_service_modname(authenticator) ->
+    {tk_token_keeper_thrift, 'TokenAuthenticator'};
+get_service_modname({authority, {ephemeral, _}}) ->
+    {tk_token_keeper_thrift, 'EphemeralTokenAuthority'};
+get_service_modname({authority, {offline, _}}) ->
+    {tk_token_keeper_thrift, 'TokenAuthority'}.
+
+%%
+
+get_url_path(Url) ->
+    #{path := Path} = uri_string:parse(Url),
+    Path.
+
+override_env_urls(IP, Port, Handlers) ->
+    lists:foreach(
+        fun({HandlerName, _}) ->
+            override_env_handler_url(HandlerName, IP, Port)
+        end,
+        Handlers
+    ).
+
+override_env_handler_url(HandlerName, _IP, Port) ->
+    Path = get_handler_path(HandlerName),
+    NewUrl = iolist_to_binary(["http://", ?HOST_NAME, ":", integer_to_list(Port), binary_to_list(Path)]),
+    set_handler_url(HandlerName, NewUrl).
+
+set_handler_url(HandlerName, NewUrl) ->
+    ClientServiceCfg = get_client_service_config(HandlerName),
+    set_client_service_config(HandlerName, ClientServiceCfg#{url => NewUrl}).
+
+%%
+
+get_client_service_config(authenticator) ->
+    maps:get(authenticator, get_service_clients());
+get_client_service_config({authority, {Type, Name}}) ->
+    AuthoritiesConfig = maps:get(authorities, get_service_clients()),
+    AuthoritiesType = maps:get(Type, AuthoritiesConfig),
+    maps:get(Name, AuthoritiesType).
+
+set_client_service_config(authenticator, ServiceConfig) ->
+    set_service_clients(maps:put(authenticator, ServiceConfig, get_service_clients()));
+set_client_service_config({authority, {Type, Name}}, ServiceConfig) ->
+    set_service_clients(genlib_map:deepput([authorities, Type, Name], ServiceConfig, get_service_clients())).
+
+get_service_clients() ->
+    {ok, ServiceClients} = application:get_env(?APP, service_clients),
+    ServiceClients.
+
+set_service_clients(Value) ->
+    application:set_env(?APP, service_clients, Value).

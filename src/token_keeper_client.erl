@@ -1,91 +1,100 @@
 -module(token_keeper_client).
 
--include_lib("token_keeper_proto/include/tk_token_keeper_thrift.hrl").
--include_lib("token_keeper_proto/include/tk_context_thrift.hrl").
-
-%% API functions
-
--export([create_ephemeral/3]).
--export([get_by_token/3]).
+-export([authenticator/1]).
+-export([ephemeral_authority/2]).
+-export([offline_authority/2]).
 
 %% API types
 
--type token() :: token_keeper_auth_data:token().
--type source_context() :: #{request_origin := binary()}.
+-type token() :: binary().
+-type token_context() :: #{
+    request_origin => binary()
+}.
+
+-type auth_data_id() :: binary().
+-type status() :: active | revoked.
+-type context_fragment() :: tk_context_thrift:'ContextFragment'().
+-type authority_id() :: binary().
+-type metadata() :: #{binary() => binary()}.
+
+-type auth_data() :: #{
+    id => auth_data_id(),
+    token := token(),
+    status := status(),
+    context := context_fragment(),
+    authority => authority_id(),
+    metadata => metadata()
+}.
+
+-type client() :: #{
+    woody_client := woody_client(),
+    woody_context := woody_context()
+}.
 
 -export_type([token/0]).
--export_type([source_context/0]).
+-export_type([token_context/0]).
 
-%% API Errors
+-export_type([auth_data_id/0]).
+-export_type([status/0]).
+-export_type([context_fragment/0]).
+-export_type([authority_id/0]).
+-export_type([metadata/0]).
 
--type token_error(T) :: {token, T}.
--type auth_data_error(T) :: {auth_data, T}.
--type context_error(T) :: {context, T}.
+-export_type([auth_data/0]).
 
--type invalid_token_error() :: token_error(invalid).
--type auth_data_not_found_error() :: auth_data_error(not_found).
--type auth_data_revoked_error() :: auth_data_error(revoked).
--type context_creation_error() :: context_error(creation_failed).
-
--type get_by_token_errors() ::
-    invalid_token_error()
-    | auth_data_not_found_error()
-    | auth_data_revoked_error()
-    | context_creation_error().
-
--export_type([get_by_token_errors/0]).
+-export_type([client/0]).
 
 %% Internal types
 
--type context_fragment() :: tk_token_keeper_thrift:'ContextFragment'().
--type metadata() :: token_keeper_auth_data:metadata().
+-type authority_name() :: atom().
 
--type source_context_thrift() :: tk_token_keeper_thrift:'TokenSourceContext'().
+-type woody_client() :: #{
+    url := woody:url(),
+    timeout => non_neg_integer(),
+    retries => #{woody:func() | '_' => genlib_retry:strategy()}
+}.
 
-%%
+-type woody_context() :: woody_context:ctx().
+
 %% API functions
-%%
 
--spec create_ephemeral(context_fragment(), metadata(), woody_context:ctx()) ->
-    token_keeper_auth_data:auth_data().
-create_ephemeral(ContextFragment, Metadata, WoodyContext) ->
-    call_create_ephemeral(ContextFragment, Metadata, WoodyContext).
+-spec authenticator(woody_context()) -> client() | no_return().
+authenticator(WoodyContext) ->
+    make_client(get_authenticator_service_client(), WoodyContext).
 
--spec get_by_token(token(), source_context() | undefined, woody_context:ctx()) ->
-    {ok, token_keeper_auth_data:auth_data()} | {error, get_by_token_errors()}.
-get_by_token(TokenString, SourceContext, WoodyContext) ->
-    call_get_by_token(TokenString, encode_source_context(SourceContext), WoodyContext).
+-spec ephemeral_authority(authority_name(), woody_context()) -> client() | no_return().
+ephemeral_authority(AuthorityName, WoodyContext) ->
+    make_client(get_authority_service_client(ephemeral, AuthorityName), WoodyContext).
 
-%%
+-spec offline_authority(authority_name(), woody_context()) -> client() | no_return().
+offline_authority(AuthorityName, WoodyContext) ->
+    make_client(get_authority_service_client(offline, AuthorityName), WoodyContext).
+
 %% Internal functions
-%%
 
--spec encode_source_context(source_context() | undefined) -> source_context_thrift().
-encode_source_context(#{request_origin := Origin}) ->
-    #token_keeper_TokenSourceContext{request_origin = Origin};
-encode_source_context(undefined) ->
-    #token_keeper_TokenSourceContext{}.
+make_client(WoodyClient, WoodyContext) ->
+    #{
+        woody_client => WoodyClient,
+        woody_context => WoodyContext
+    }.
 
-%%
-
--spec call_create_ephemeral(context_fragment(), metadata(), woody_context:ctx()) ->
-    token_keeper_auth_data:auth_data().
-call_create_ephemeral(ContextFragment, Metadata, WoodyContext) ->
-    {ok, AuthData} = token_keeper_client_woody:call('CreateEphemeral', {ContextFragment, Metadata}, WoodyContext),
-    AuthData.
-
--spec call_get_by_token(token(), source_context_thrift(), woody_context:ctx()) ->
-    {ok, token_keeper_auth_data:auth_data()} | {error, get_by_token_errors()}.
-call_get_by_token(Token, TokenSourceContext, WoodyContext) ->
-    case token_keeper_client_woody:call('GetByToken', {Token, TokenSourceContext}, WoodyContext) of
-        {ok, AuthData} ->
-            {ok, AuthData};
-        {exception, #token_keeper_InvalidToken{}} ->
-            {error, {token, invalid}};
-        {exception, #token_keeper_AuthDataNotFound{}} ->
-            {error, {auth_data, not_found}};
-        {exception, #token_keeper_AuthDataRevoked{}} ->
-            {error, {auth_data, revoked}};
-        {exception, #token_keeper_ContextCreationFailed{}} ->
-            {error, {context, creation_failed}}
+get_authenticator_service_client() ->
+    case maps:get(authenticator, get_service_clients(), #{}) of
+        #{} = AuthenticatorConf ->
+            AuthenticatorConf;
+        undefined ->
+            error({misconfiguration, {not_configured, authenticator}})
     end.
+
+get_authority_service_client(Type, Name) ->
+    Authoritites = maps:get(authorities, get_service_clients(), #{}),
+    AuthorityType = maps:get(Type, Authoritites, #{}),
+    case maps:get(Name, AuthorityType, undefined) of
+        #{} = AuthorityConf ->
+            AuthorityConf;
+        undefined ->
+            error({misconfiguration, {not_configured, {Type, Name}}})
+    end.
+
+get_service_clients() ->
+    genlib_app:env(?MODULE, service_clients, #{}).

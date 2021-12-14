@@ -3,7 +3,6 @@
 -export([call/3]).
 -export([call/4]).
 
--define(APP, token_keeper_client).
 -define(DEFAULT_DEADLINE, 5000).
 
 %%
@@ -16,20 +15,18 @@
 
 -type context() :: woody_context:ctx().
 
--spec call(woody:func(), woody:args(), context()) -> woody:result().
-call(Function, Args, Context) ->
+-spec call(_, _, context()) -> woody:result().
+call(Request, ServiceClient, Context) ->
     EventHandler = scoper_woody_event_handler,
-    call(Function, Args, Context, EventHandler).
+    call(Request, ServiceClient, Context, EventHandler).
 
--spec call(woody:func(), woody:args(), context(), woody:ev_handler()) -> woody:result().
-call(Function, Args, Context0, EventHandler) ->
-    Config = get_service_client_config(),
-    Deadline = get_service_deadline(Config),
+-spec call(_, _, context(), woody:ev_handler()) -> woody:result().
+call(Request, ServiceClient, Context0, EventHandler) ->
+    Deadline = get_service_deadline(ServiceClient),
     Context1 = ensure_deadline_set(Deadline, Context0),
-    Retry = get_service_retry(Function, Config),
-    Request = {{tk_token_keeper_thrift, 'TokenKeeper'}, Function, Args},
+    Retry = get_service_retry(Request, ServiceClient),
     Opts = #{
-        url => get_service_client_url(Config),
+        url => get_service_client_url(ServiceClient),
         event_handler => EventHandler
     },
     call_retry(Request, Context1, Opts, Retry).
@@ -81,10 +78,6 @@ apply_retry_step({wait, Timeout, Retry}, DeadlineMs, Error) when DeadlineMs > Ti
             Retry
     end.
 
--spec get_service_client_config() -> client_config().
-get_service_client_config() ->
-    genlib_app:env(?APP, service_client, #{}).
-
 -spec get_service_client_url(client_config()) -> woody:url().
 get_service_client_url(ClientConfig) ->
     maps:get(url, ClientConfig).
@@ -96,8 +89,8 @@ get_service_deadline(ClientConfig) ->
         Timeout -> woody_deadline:from_timeout(Timeout)
     end.
 
--spec get_service_retry(woody:func(), client_config()) -> genlib_retry:strategy().
-get_service_retry(Function, ClientConfig) ->
+-spec get_service_retry(woody:request(), client_config()) -> genlib_retry:strategy().
+get_service_retry({_, Function, _}, ClientConfig) ->
     FunctionRetries = maps:get(retries, ClientConfig, #{}),
     DefaultRetry = maps:get('_', FunctionRetries, finish),
     maps:get(Function, FunctionRetries, DefaultRetry).
