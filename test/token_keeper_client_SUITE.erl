@@ -52,7 +52,8 @@
 }).
 -define(AUTHORITY, <<"kinginthecastle">>).
 
--define(AUTHDATA(Token), ?AUTHDATA(undefined, Token, ?CTX_FRAGMENT, ?METADATA)).
+-define(AUTHDATA(Token), ?AUTHDATA(Token, ?CTX_FRAGMENT, ?METADATA)).
+-define(AUTHDATA(Token, ContextFragment, Metadata), ?AUTHDATA(undefined, Token, ContextFragment, Metadata)).
 -define(AUTHDATA(ID, Token, ContextFragment, Metadata), #token_keeper_AuthData{
     id = ID,
     token = Token,
@@ -74,7 +75,7 @@ all() ->
 -spec groups() -> [{group_name(), list(), [test_case_name()]}].
 groups() ->
     [
-        {service_client_tests, [
+        {service_client_tests, [], [
             authenticate_ok,
             create_ephemeral_ok,
             create_ok,
@@ -82,7 +83,7 @@ groups() ->
             revoke_ok,
             not_configured_authority
         ]},
-        {woody_client_tests, [
+        {woody_client_tests, [], [
             follows_retries,
             follows_timeout
         ]}
@@ -131,7 +132,7 @@ init_per_suite(Config) ->
 
 -spec end_per_suite(config()) -> _.
 end_per_suite(Config) ->
-    [application:stop(App) || App <- proplists:get_value(apps, Config)],
+    _ = [application:stop(App) || App <- proplists:get_value(apps, Config)],
     Config.
 
 %%
@@ -152,8 +153,8 @@ init_per_testcase(_Name, C) ->
 
 -spec end_per_testcase(test_case_name(), config()) -> config().
 end_per_testcase(_Name, C) ->
-    stop_mocked_service_sup(?config(test_sup, C)),
-    ok.
+    _ = stop_mocked_service_sup(?config(test_sup, C)),
+    C.
 
 %%
 
@@ -180,7 +181,7 @@ create_ephemeral_ok(C) ->
     mock_token_keeper(
         [
             {{authority, {ephemeral, ephemeral_authority}}, fun('Create', {ContextFragment, Metadata}) ->
-                {ok, ?AUTHDATA(undefined, ?TOKEN_STRING, ContextFragment, Metadata)}
+                {ok, ?AUTHDATA(?TOKEN_STRING, ContextFragment, Metadata)}
             end}
         ],
         C
@@ -190,7 +191,7 @@ create_ephemeral_ok(C) ->
     ?assertEqual(
         {ok,
             token_keeper_client_codec:decode_authdata(
-                ?AUTHDATA(undefined, ?TOKEN_STRING, ?CTX_FRAGMENT, ?METADATA)
+                ?AUTHDATA(?TOKEN_STRING, ?CTX_FRAGMENT, ?METADATA)
             )},
         token_keeper_authority_ephemeral:create(?CTX_FRAGMENT, ?METADATA, Client)
     ),
@@ -262,12 +263,13 @@ revoke_ok(C) ->
 -spec not_configured_authority(config()) -> test_return().
 not_configured_authority(_C) ->
     WoodyContext = woody_context:new(),
-    try
-        token_keeper_client:offline_authority(some_other_authority, WoodyContext)
-    catch
-        error:Error ->
-            ?assertEqual(Error, {misconfiguration, {not_configured, {offline, some_other_authority}}})
-    end,
+    _ =
+        try
+            token_keeper_client:offline_authority(some_other_authority, WoodyContext)
+        catch
+            error:Error ->
+                ?assertEqual(Error, {misconfiguration, {not_configured, {offline, some_other_authority}}})
+        end,
     ok.
 
 %%

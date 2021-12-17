@@ -31,11 +31,11 @@ decode_authdata(#token_keeper_AuthData{
     metadata = Metadata,
     authority = Authority
 }) ->
-    #{
+    genlib_map:compact(#{
         id => ID,
         token => Token,
         status => Status,
         context => Context,
         metadata => Metadata,
         authority => Authority
-    }.
+    }).

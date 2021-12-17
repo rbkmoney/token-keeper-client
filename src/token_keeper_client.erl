@@ -19,11 +19,11 @@
 
 -type auth_data() :: #{
     id => auth_data_id(),
-    token := token(),
+    token => token(),
     status := status(),
     context := context_fragment(),
-    authority => authority_id(),
-    metadata => metadata()
+    metadata := metadata(),
+    authority => authority_id()
 }.
 
 -type client() :: #{
